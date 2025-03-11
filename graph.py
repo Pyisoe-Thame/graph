@@ -10,29 +10,41 @@ class GraphVisualizer:
         self.root = root
         self.root.title("CSV Graph Visualizer")
 
-        self.label_file_path = tk.Label(root, text="CSV File:")
-        self.label_file_path.grid(row=0, column=0, padx=5, pady=5)
+        # Style Configuration
+        style = ttk.Style()
+        style.configure('TButton', padding=(10, 5), font=('Arial', 10))
+        style.configure('TLabel', font=('Arial', 10))
 
-        self.entry_file_path = tk.Entry(root, width=50)
-        self.entry_file_path.grid(row=0, column=1, padx=5, pady=5)
+        # File Selection
+        self.label_file_path = ttk.Label(root, text="CSV File:")
+        self.label_file_path.grid(row=0, column=0, padx=5, pady=5, sticky='w')
+
+        self.entry_file_path = ttk.Entry(root, width=50)
+        self.entry_file_path.grid(row=0, column=1, padx=5, pady=5, sticky='we')
 
         self.button_browse = tk.Button(root, text="Browse", command=self.browse_file)
         self.button_browse.grid(row=0, column=2, padx=5, pady=5)
 
+        self.weight_label = tk.Label(root, text="Weight:")
+        self.weight_label.grid(row=1, column=0, padx=5, pady=5)
+
+        self.weight_combobox = ttk.Combobox(root, values=[], state="readonly")
+        self.weight_combobox.grid(row=1, column=1, padx=5, pady=5)
+
         self.button_visualize = tk.Button(root, text="Visualize Graph", command=self.visualize_graph)
-        self.button_visualize.grid(row=1, column=0, pady=10)
+        self.button_visualize.grid(row=2, column=0, pady=10)
 
         self.button_shortest_path = tk.Button(root, text="Shortest Path", command=self.calculate_shortest_path)
-        self.button_shortest_path.grid(row=1, column=1, pady=10)
+        self.button_shortest_path.grid(row=2, column=1, pady=10)
 
         self.button_clear_highlights = tk.Button(root, text="Clear Highlights", command=self.clear_highlights)
-        self.button_clear_highlights.grid(row=1, column=2, pady=10)
+        self.button_clear_highlights.grid(row=2, column=2, pady=10)
 
         self.button_exit = tk.Button(root, text="Exit", command=self.exit_app)
-        self.button_exit.grid(row=3, column=1, pady=10)
+        self.button_exit.grid(row=4, column=1, pady=10)
 
         self.canvas_frame = tk.Frame(root)
-        self.canvas_frame.grid(row=2, column=0, columnspan=3, padx=10, pady=10)
+        self.canvas_frame.grid(row=3, column=0, columnspan=3, padx=10, pady=10)
 
         self.canvas = None
         self.figure = None
@@ -43,11 +55,17 @@ class GraphVisualizer:
         self.start_node = None
         self.end_node = None
         self.node_colors = {}
+        self.df = None
 
     def browse_file(self):
         file_path = filedialog.askopenfilename(filetypes=[("CSV files", "*.csv")])
         self.entry_file_path.delete(0, tk.END)
         self.entry_file_path.insert(0, file_path)
+        try:
+            self.df = pd.read_csv(file_path)
+            self.weight_combobox['values'] = list(self.df.columns[2:]) #Populate weight combobox
+        except Exception as e:
+            messagebox.showerror("Error", f"Error loading CSV: {e}")
 
     def visualize_graph(self):
         file_path = self.entry_file_path.get()
@@ -56,18 +74,17 @@ class GraphVisualizer:
             return
 
         try:
-            df = pd.read_csv(file_path)
-
-            if not {'source', 'target', 'weight'}.issubset(df.columns):
-                messagebox.showerror("Error", "CSV file must contain 'source', 'target', and 'weight' columns.")
+            weight_column = self.weight_combobox.get()
+            if not weight_column:
+                messagebox.showerror("Error", "Please select a weight column.")
                 return
 
-            self.G = nx.from_pandas_edgelist(df, 'source', 'target', ['weight'])
+            self.G = nx.from_pandas_edgelist(self.df, self.df.columns[0], self.df.columns[1], [weight_column])
 
             self.figure, self.ax = plt.subplots()
             # self.pos = nx.spring_layout(self.G)  # Layout algorithm
             self.pos = nx.circular_layout(self.G)  # Layout algorithm
-            self.node_colors = {node: 'skyblue' for node in self.G.nodes()}
+            self.node_colors = {node: 'orange' for node in self.G.nodes()}
 
             self.draw_graph()
 
@@ -91,8 +108,14 @@ class GraphVisualizer:
         self.ax.clear()
         nx.draw_networkx_edges(self.G, self.pos, ax=self.ax) #draw edges
         nx.draw_networkx_labels(self.G, self.pos, ax=self.ax) #draw labels
-        labels = nx.get_edge_attributes(self.G, 'weight')
-        nx.draw_networkx_edge_labels(self.G, self.pos, edge_labels=labels, ax=self.ax)
+
+        # Get edge attributes (weights)
+        edge_attributes = nx.get_edge_attributes(self.G, self.weight_combobox.get())
+
+        # Create a dictionary with edge tuples as keys and weight values as values
+        edge_labels = {(u, v): d for (u, v), d in edge_attributes.items()} 
+
+        nx.draw_networkx_edge_labels(self.G, self.pos, edge_labels=edge_labels, ax=self.ax)
 
         # Store the path collection object in self.scatter
         self.scatter = nx.draw_networkx_nodes(self.G, self.pos, node_size=1300, node_color=list(self.node_colors.values()), ax=self.ax)
@@ -111,18 +134,18 @@ class GraphVisualizer:
                 node_index = ind['ind'][0]
                 node = list(self.G.nodes())[node_index]
 
-                if node == self.start_node:
+                if node == self.start_node:  # clear both start and end nodes
                     self.start_node = None
-                    self.node_colors[node] = 'skyblue'
-                elif node == self.end_node:
+                    self.node_colors[node] = 'orange'
+                elif node == self.end_node:  # clear the end node
                     self.end_node = None
-                    self.node_colors[node] = 'skyblue'
-                elif self.start_node is None:
+                    self.node_colors[node] = 'orange'
+                elif self.start_node is None:  # start node not chosen yet?
                     self.start_node = node
                     self.node_colors[node] = 'lightgreen'
-                elif self.end_node is None:
+                elif self.end_node is None:  # end node not chosen yet?
                     self.end_node = node
-                    self.node_colors[node] = 'salmon'
+                    self.node_colors[node] = 'violet'
         
                 # Old Approach
                 # self.draw_graph()  # Redraw the graph with updated node colors
@@ -146,7 +169,9 @@ class GraphVisualizer:
             return
 
         try:
-            shortest_path = nx.shortest_path(self.G, self.start_node, self.end_node, weight='weight')
+            weight_column = self.weight_combobox.get()
+            shortest_path = nx.dijkstra_path(self.G, self.start_node, self.end_node, weight=weight_column)  # force dijktra's algorithm
+            # shortest_path = nx.shortest_path(self.G, self.start_node, self.end_node, weight=weight_column)  # the usual way
             edge_colors = ['red' if (shortest_path[i], shortest_path[i + 1]) in self.G.edges() or (shortest_path[i + 1], shortest_path[i]) in self.G.edges() else 'black' for i in range(len(shortest_path) - 1)]
 
             edge_list = [(shortest_path[i], shortest_path[i + 1]) for i in range(len(shortest_path)-1)]
@@ -156,13 +181,15 @@ class GraphVisualizer:
             self.canvas.draw()
         except nx.NetworkXNoPath:
             messagebox.showerror("Error", "No path found between the selected nodes.")
+        except nx.NetworkXUnweightedPath:
+            messagebox.showerror("Error", "Cannot use Dijkstra's algorithm on an unweighted graph or with negative weights.")
         except Exception as e:
             messagebox.showerror("Error", f"An error occurred: {e}")
 
     def clear_highlights(self):
         self.start_node = None
         self.end_node = None
-        self.node_colors = {node: 'skyblue' for node in self.G.nodes()}
+        self.node_colors = {node: 'orange' for node in self.G.nodes()}
         self.draw_graph()
         self.canvas.draw()
 
@@ -174,3 +201,5 @@ if __name__ == "__main__":
     root = tk.Tk()
     app = GraphVisualizer(root)
     root.mainloop()
+
+    
