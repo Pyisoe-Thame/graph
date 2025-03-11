@@ -1,0 +1,9 @@
+source,target,weight
+Kiav,Sapporo,13
+Sapporo,Berlin,20
+Berlin,Kiav,15
+Lyon,Kiav,12
+Atalantis,Lyon,13
+El Dorado,Atalantis,17
+El Dorado,Lyon,15
+El Dorado,Kiav,14
