@@ -41,10 +41,15 @@ class GraphVisualizer:
         self.button_clear_highlights.grid(row=2, column=2, pady=10)
 
         self.button_exit = tk.Button(root, text="Exit", command=self.exit_app)
-        self.button_exit.grid(row=4, column=1, pady=10)
+        self.button_exit.grid(row=5, column=1, pady=10)
 
         self.canvas_frame = tk.Frame(root)
-        self.canvas_frame.grid(row=3, column=0, columnspan=3, padx=10, pady=10)
+        self.canvas_frame.grid(row=3, column=0, columnspan=3, padx=13, pady=13)
+
+        # for the new canvas to show the paths
+        self.paths_text = tk.Text(root, height=10, width=60)
+        self.paths_text.grid(row=4, column=0, columnspan=3, padx=13, pady=13) # row changed, columnspan added
+        self.paths_text.config(state=tk.DISABLED)
 
         self.canvas = None
         self.figure = None
@@ -82,8 +87,8 @@ class GraphVisualizer:
             self.G = nx.from_pandas_edgelist(self.df, self.df.columns[0], self.df.columns[1], [weight_column])
 
             self.figure, self.ax = plt.subplots()
-            # self.pos = nx.spring_layout(self.G)  # Layout algorithm
-            self.pos = nx.circular_layout(self.G)  # Layout algorithm
+            self.pos = nx.spring_layout(self.G)  # Layout algorithm
+            # self.pos = nx.circular_layout(self.G)  # Layout algorithm
             self.node_colors = {node: 'orange' for node in self.G.nodes()}
 
             self.draw_graph()
@@ -161,28 +166,40 @@ class GraphVisualizer:
             pass  # or add some other behavior here, if needed.
 
     def calculate_shortest_path(self):
-        if self.start_node is None:
+        if self.start_node is None or self.end_node is None:
             messagebox.showerror("Error", "Please select both starting and ending nodes.")
-            return
-        elif self.end_node is None:
-            messagebox.showerror("Error", "Please select an ending node.")
             return
 
         try:
             weight_column = self.weight_combobox.get()
-            shortest_path = nx.dijkstra_path(self.G, self.start_node, self.end_node, weight=weight_column)  # force dijktra's algorithm
-            # shortest_path = nx.shortest_path(self.G, self.start_node, self.end_node, weight=weight_column)  # the usual way
-            edge_colors = ['red' if (shortest_path[i], shortest_path[i + 1]) in self.G.edges() or (shortest_path[i + 1], shortest_path[i]) in self.G.edges() else 'black' for i in range(len(shortest_path) - 1)]
+            all_paths = list(nx.all_simple_paths(self.G, self.start_node, self.end_node))
 
-            edge_list = [(shortest_path[i], shortest_path[i + 1]) for i in range(len(shortest_path)-1)]
+            weighted_paths = []
+            for path in all_paths:
+                weight = 0
+                for i in range(len(path) - 1):
+                    weight += self.G[path[i]][path[i + 1]][weight_column]
+                weighted_paths.append((weight, path))
 
-            self.draw_graph()
-            nx.draw_networkx_edges(self.G, self.pos, edgelist=edge_list, edge_color='red', width=2, ax=self.ax)
-            self.canvas.draw()
+            weighted_paths.sort()  # Sort by weight
+
+            self.paths_text.config(state=tk.NORMAL)
+            self.paths_text.delete(1.0, tk.END)
+            for weight, path in weighted_paths:
+                self.paths_text.insert(tk.END, f"Weight: {weight}, Path: {path}\n")
+            self.paths_text.config(state=tk.DISABLED)
+
+            if weighted_paths:
+                shortest_path = weighted_paths[0][1]
+                edge_list = [(shortest_path[i], shortest_path[i + 1]) for i in range(len(shortest_path) - 1)]
+                self.draw_graph()
+                nx.draw_networkx_edges(self.G, self.pos, edgelist=edge_list, edge_color='red', width=2, ax=self.ax)
+                self.canvas.draw()
+            else:
+                messagebox.showinfo("Info", "No paths found between the selected nodes.")
+
         except nx.NetworkXNoPath:
             messagebox.showerror("Error", "No path found between the selected nodes.")
-        except nx.NetworkXUnweightedPath:
-            messagebox.showerror("Error", "Cannot use Dijkstra's algorithm on an unweighted graph or with negative weights.")
         except Exception as e:
             messagebox.showerror("Error", f"An error occurred: {e}")
 
